@@ -180,4 +180,489 @@ const SCENARIOS = [
     "wants to settle down but is afraid of being trapped",
     "has been carrying a message for someone who may no longer want to receive it",
   ]},
-  { lo
+  { location: "the quiet chapel", npc: "Sister Maren, the healer", situations: [
+    "is questioning her faith after failing to save a patient",
+    "discovered she has more power than the order allows her to use",
+    "is caught between loyalty to her order and compassion for an outcast",
+    "carries a burden of secrets confided to her that weigh heavily",
+    "wants to leave the chapel but fears what she'd become without its structure",
+  ]},
+  { location: "the harvest market", npc: "Fennel, a young mother", situations: [
+    "is struggling to provide for her children alone after her partner left",
+    "received an inheritance she feels guilty about accepting",
+    "wants to pursue a craft but everyone tells her she should focus on her children",
+    "is in a feud with a neighbor that has spiraled out of control",
+    "senses something is wrong with her child but no healer can find anything",
+  ]},
+];
+
+const MENTOR_RESPONSES = {
+  perfect: [
+    "Your mentor nods slowly, firelight dancing in her eyes. \"Well read, little one. You're beginning to see what the cards truly say, not just what they show.\"",
+    "A rare smile crosses your mentor's weathered face. \"The cards chose well in finding you. That reading was as clear as spring water.\"",
+    "\"Ah,\" your mentor breathes, setting down her tea. \"You felt that one, didn't you? Good. The best readings come from the gut, not the book.\"",
+    "Your mentor places a warm hand on your shoulder. \"That's the reading of someone who listens. The cards will always speak to those who truly hear.\"",
+  ],
+  good: [
+    "Your mentor tilts her head. \"Close, little one. You caught the thread but didn't follow it all the way. Let me show you what you missed...\"",
+    "\"Not bad,\" your mentor says, pouring you more tea. \"You have the intuition. Now let's sharpen it. Consider this...\"",
+    "Your mentor hums thoughtfully. \"You're reading with your head when this card wants your heart. You found part of the meaning, but there's more beneath the surface.\"",
+  ],
+  wrong: [
+    "Your mentor shakes her head gently. \"Don't be discouraged. Even the oldest witches misread the cards sometimes. Here's what they were trying to tell you...\"",
+    "\"Ah, little one,\" your mentor says softly. \"The cards speak in whispers, not shouts. You were listening for the wrong voice. Let me guide you...\"",
+    "Your mentor stirs the fire. \"A misread isn't a failure — it's a lesson wearing a mask. Let me show you what the card truly meant here...\"",
+  ],
+};
+
+const CARD_SYMBOLS = {
+  "The Fool": "🌿", "The Magician": "✨", "The High Priestess": "🌙", "The Empress": "🌸",
+  "The Emperor": "🏔", "The Hierophant": "📜", "The Lovers": "💞", "The Chariot": "⚡",
+  "Strength": "🦁", "The Hermit": "🕯", "Wheel of Fortune": "☸", "Justice": "⚖",
+  "The Hanged Man": "🍂", "Death": "🦋", "Temperance": "🌊", "The Devil": "🔗",
+  "The Tower": "🌩", "The Star": "⭐", "The Moon": "🌑", "The Sun": "☀",
+  "Judgement": "🔔", "The World": "🌍",
+};
+
+const getCardSymbol = (name) => {
+  if (CARD_SYMBOLS[name]) return CARD_SYMBOLS[name];
+  if (name.includes("Wands")) return "🪄";
+  if (name.includes("Cups")) return "🍵";
+  if (name.includes("Swords")) return "⚔";
+  if (name.includes("Pentacles")) return "🪙";
+  return "🃏";
+};
+
+function scoreInterpretation(input, card, isReversed) {
+  const text = input.toLowerCase();
+  const correctMeaning = isReversed ? card.reversed : card.upright;
+  const wrongMeaning = isReversed ? card.upright : card.reversed;
+  const correctWords = correctMeaning.toLowerCase().split(/[,\s]+/).filter(w => w.length > 3);
+  const wrongWords = wrongMeaning.toLowerCase().split(/[,\s]+/).filter(w => w.length > 3);
+  let correctHits = 0;
+  let wrongHits = 0;
+  correctWords.forEach(kw => { if (text.includes(kw)) correctHits++; });
+  wrongWords.forEach(kw => { if (text.includes(kw)) wrongHits++; });
+  const themeWords = {
+    love: ["love", "heart", "romance", "partner", "relationship", "connection", "affection"],
+    change: ["change", "transform", "transition", "shift", "move", "journey", "growth"],
+    fear: ["fear", "anxiety", "worry", "doubt", "afraid", "scared", "uncertain"],
+    strength: ["strength", "courage", "brave", "power", "resilience", "endure", "persist"],
+    balance: ["balance", "harmony", "peace", "equilibrium", "moderate", "patience"],
+    loss: ["loss", "grief", "pain", "sorrow", "letting", "release", "end"],
+    new_start: ["begin", "start", "fresh", "opportunity", "spark", "dawn", "birth"],
+    wisdom: ["wisdom", "knowledge", "learn", "understand", "insight", "clarity", "truth"],
+    control: ["control", "power", "authority", "discipline", "structure", "order"],
+    creativity: ["creative", "inspiration", "imagination", "art", "vision", "dream"],
+  };
+  const meaningLower = correctMeaning.toLowerCase();
+  Object.values(themeWords).forEach(words => {
+    if (words.some(w => meaningLower.includes(w)) && words.some(w => text.includes(w))) correctHits += 0.5;
+  });
+  if (isReversed) {
+    const reversalWords = ["reverse", "block", "imbalance", "lack", "too much", "avoid", "resist", "struggle", "negative", "shadow", "opposite", "excess", "deny", "unable", "stuck", "lost"];
+    if (reversalWords.some(w => text.includes(w))) correctHits += 1;
+  }
+  if (text.length < 15) return "wrong";
+  if (correctHits >= 3) return "perfect";
+  if (correctHits >= 1.5 || (correctHits >= 1 && wrongHits === 0)) return "good";
+  return "wrong";
+}
+
+export default function App() {
+  const [screen, setScreen] = useState("title");
+  const [apprenticeName, setApprenticeName] = useState("");
+  const [currentCard, setCurrentCard] = useState(null);
+  const [isReversed, setIsReversed] = useState(false);
+  const [currentScenario, setCurrentScenario] = useState(null);
+  const [interpretation, setInterpretation] = useState("");
+  const [result, setResult] = useState(null);
+  const [totalXP, setTotalXP] = useState(0);
+  const [stats, setStats] = useState({ perfect: 0, good: 0, wrong: 0, total: 0 });
+  const [encounterHistory, setEncounterHistory] = useState([]);
+  const [unlockedRewards, setUnlockedRewards] = useState([]);
+  const [newReward, setNewReward] = useState(null);
+  const [fadeIn, setFadeIn] = useState(true);
+  const [textVisible, setTextVisible] = useState(false);
+  const [cardRevealed, setCardRevealed] = useState(false);
+  const [showMeaning, setShowMeaning] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const saveProgress = useCallback(async (data) => {
+    try {
+      await storage.set(SAVE_KEY, JSON.stringify(data));
+    } catch (e) { console.error('Save failed:', e); }
+  }, []);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const saved = await storage.get(SAVE_KEY);
+        if (saved && saved.value) {
+          const d = typeof saved.value === 'string' ? JSON.parse(saved.value) : saved.value;
+          if (d.name) { setApprenticeName(d.name); setScreen("hub"); }
+          if (d.s) setStats(d.s);
+          if (d.xp !== undefined) setTotalXP(d.xp);
+          if (d.h) setEncounterHistory(d.h);
+          if (d.r) setUnlockedRewards(d.r);
+        }
+      } catch (e) { console.log('No save found, starting fresh'); }
+      setLoaded(true);
+      setTimeout(() => setTextVisible(true), 150);
+    }
+    load();
+  }, []);
+
+  const transition = useCallback((next, delay = 300) => {
+    setFadeIn(false);
+    setTimeout(() => {
+      setScreen(next);
+      setFadeIn(true);
+      setTextVisible(false);
+      setTimeout(() => setTextVisible(true), 100);
+    }, delay);
+  }, []);
+
+  const currentLevel = getLevel(totalXP);
+  const nextLevel = getNextLevel(totalXP);
+  const xpInLevel = nextLevel ? totalXP - currentLevel.xpNeeded : 0;
+  const xpForLevel = nextLevel ? nextLevel.xpNeeded - currentLevel.xpNeeded : 1;
+
+  const generateEncounter = useCallback(() => {
+    const { cards, allowReversed } = getAvailableCards(currentLevel.level);
+    const card = cards[Math.floor(Math.random() * cards.length)];
+    const reversed = allowReversed ? Math.random() > 0.6 : false;
+    const scenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+    const situation = scenario.situations[Math.floor(Math.random() * scenario.situations.length)];
+    setCurrentCard(card);
+    setIsReversed(reversed);
+    setCurrentScenario({ ...scenario, situation });
+    setInterpretation("");
+    setResult(null);
+    setCardRevealed(false);
+    setShowMeaning(false);
+    setNewReward(null);
+    transition("encounter");
+    setTimeout(() => setCardRevealed(true), 800);
+  }, [transition, currentLevel]);
+
+  const submitInterpretation = useCallback(() => {
+    if (interpretation.trim().length < 10) return;
+    const score = scoreInterpretation(interpretation, currentCard, isReversed);
+    const responses = MENTOR_RESPONSES[score];
+    const response = responses[Math.floor(Math.random() * responses.length)];
+    const xpGain = score === "perfect" ? 30 : score === "good" ? 15 : 5;
+    const newXP = totalXP + xpGain;
+    const newStats = { ...stats, [score]: stats[score] + 1, total: stats.total + 1 };
+    const newHistory = [...encounterHistory, { card: currentCard.name, reversed: isReversed, score, npc: currentScenario.npc }];
+    const oldLevel = getLevel(totalXP);
+    const newLevelObj = getLevel(newXP);
+    let reward = null;
+    let newRewards = [...unlockedRewards];
+    if (newLevelObj.level > oldLevel.level && newLevelObj.unlock) {
+      reward = newLevelObj.unlock;
+      if (!newRewards.find(r => r.name === reward.name)) newRewards.push(reward);
+    }
+    setResult({ score, response, xpGain });
+    setTotalXP(newXP);
+    setStats(newStats);
+    setEncounterHistory(newHistory);
+    setUnlockedRewards(newRewards);
+    setShowMeaning(true);
+    if (reward) setNewReward(reward);
+    saveProgress({ name: apprenticeName, s: newStats, xp: newXP, h: newHistory, r: newRewards });
+  }, [interpretation, currentCard, isReversed, totalXP, stats, encounterHistory, currentScenario, apprenticeName, unlockedRewards, saveProgress]);
+
+  const startGame = useCallback(() => {
+    if (!apprenticeName.trim()) return;
+    saveProgress({ name: apprenticeName, s: stats, xp: totalXP, h: encounterHistory, r: unlockedRewards });
+    transition("hub");
+  }, [apprenticeName, stats, totalXP, encounterHistory, unlockedRewards, saveProgress, transition]);
+
+  const deckInfo = (() => {
+    const { cards, allowReversed } = getAvailableCards(currentLevel.level);
+    const suits = currentLevel.cards || ["major"];
+    const suitNames = suits.map(s => s === "major" ? "Major Arcana" : s.charAt(0).toUpperCase() + s.slice(1));
+    return { count: cards.length * (allowReversed ? 2 : 1), suitNames, allowReversed };
+  })();
+
+  return (
+    <div data-fade={fadeIn ? "true" : "false"} data-visible={textVisible ? "true" : "false"} style={{
+      minHeight: "100vh",
+      background: "linear-gradient(175deg, #2a3a2a 0%, #1e2b1e 40%, #1a241a 100%)",
+      fontFamily: "'Crimson Text', 'Georgia', serif",
+      color: "#f4ead5",
+      overflow: "hidden",
+      position: "relative",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Cinzel:wght@400;500;600;700&family=Cinzel+Decorative:wght@400;700&display=swap');
+        :root {
+          --forest: #2a3a2a; --forest-deep: #1e2b1e; --forest-light: #3d5a3d;
+          --cream: #f4ead5; --cream-dim: #d4c9b0;
+          --accent: #8b6b4a; --accent-light: #c4956a;
+          --gold: #d4a84b; --gold-dim: #a07830;
+          --moonstone: #c8d8e4; --card-bg: #f0e6d0;
+          --success: #7dad7d; --partial: #d4a84b; --miss: #b07070;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        .fade-container { transition: opacity 0.4s ease; }
+        [data-fade="true"] .fade-container { opacity: 1; }
+        [data-fade="false"] .fade-container { opacity: 0; }
+        .text-reveal { opacity: 0; transform: translateY(12px); transition: opacity 0.6s ease, transform 0.6s ease; }
+        [data-visible="true"] .text-reveal { opacity: 1; transform: translateY(0); }
+        .screen-wrap { max-width: 520px; margin: 0 auto; padding: 24px 20px; min-height: 100vh; display: flex; flex-direction: column; }
+        .title-text { font-family: 'Cinzel Decorative', 'Cinzel', serif; font-weight: 400; letter-spacing: 0.08em; }
+        .heading { font-family: 'Cinzel', serif; font-weight: 500; letter-spacing: 0.05em; }
+        .body-text { font-family: 'Crimson Text', Georgia, serif; font-size: 17px; line-height: 1.7; color: var(--cream-dim); }
+        .btn { font-family: 'Cinzel', serif; font-size: 14px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; border: 1.5px solid var(--accent); background: transparent; color: var(--cream); padding: 14px 32px; cursor: pointer; transition: all 0.3s ease; }
+        .btn:hover { background: var(--accent); box-shadow: 0 0 20px rgba(139,107,74,0.3); }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: var(--accent); border-color: var(--accent-light); }
+        .btn-primary:hover { background: var(--accent-light); }
+        .card-display { background: var(--card-bg); border: 2px solid var(--accent); padding: 28px 24px; text-align: center; position: relative; box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 0 60px rgba(139,107,74,0.1); transition: transform 0.6s ease; margin: 16px auto; max-width: 280px; transform: rotateY(90deg) scale(0.9); }
+        .card-display.revealed { transform: rotateY(0deg) scale(1); }
+        .card-display::before { content: ''; position: absolute; top: 6px; left: 6px; right: 6px; bottom: 6px; border: 1px solid var(--accent); opacity: 0.4; pointer-events: none; }
+        .textarea-input { width: 100%; min-height: 100px; background: rgba(30,43,30,0.6); border: 1px solid var(--accent); color: var(--cream); font-family: 'Crimson Text', Georgia, serif; font-size: 16px; line-height: 1.6; padding: 14px 16px; resize: vertical; outline: none; transition: border-color 0.3s; }
+        .textarea-input:focus { border-color: var(--gold); box-shadow: 0 0 12px rgba(212,168,75,0.15); }
+        .textarea-input::placeholder { color: rgba(244,234,213,0.3); font-style: italic; }
+        .name-input { background: transparent; border: none; border-bottom: 1.5px solid var(--accent); color: var(--cream); font-family: 'Cinzel', serif; font-size: 20px; text-align: center; padding: 8px 16px; outline: none; width: 100%; max-width: 280px; letter-spacing: 0.05em; }
+        .name-input:focus { border-bottom-color: var(--gold); }
+        .name-input::placeholder { color: rgba(244,234,213,0.25); font-size: 16px; }
+        .divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
+        .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+        .divider span { font-size: 14px; color: var(--accent); }
+        .xp-bar-outer { width: 100%; height: 6px; background: rgba(139,107,74,0.2); border-radius: 3px; overflow: hidden; }
+        .xp-bar-inner { height: 100%; background: linear-gradient(90deg, var(--accent), var(--gold)); border-radius: 3px; transition: width 0.8s ease; }
+        .result-banner { padding: 20px; border-left: 3px solid; margin: 16px 0; background: rgba(0,0,0,0.2); }
+        .result-perfect { border-color: var(--success); }
+        .result-good { border-color: var(--partial); }
+        .result-wrong { border-color: var(--miss); }
+        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+        .stat-box { text-align: center; padding: 14px 8px; background: rgba(139,107,74,0.1); border: 1px solid rgba(139,107,74,0.2); }
+        .stat-number { font-family: 'Cinzel', serif; font-size: 28px; font-weight: 700; color: var(--gold); display: block; }
+        .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--cream-dim); margin-top: 4px; }
+        .history-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid rgba(139,107,74,0.15); font-size: 15px; }
+        .history-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .leaf-decoration { position: fixed; pointer-events: none; opacity: 0.04; font-size: 120px; z-index: 0; }
+        .meaning-reveal { background: rgba(139,107,74,0.1); border: 1px solid rgba(139,107,74,0.25); padding: 16px 18px; margin: 12px 0; }
+        .reversed-badge { display: inline-block; font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--miss); border: 1px solid var(--miss); padding: 2px 10px; margin-top: 8px; opacity: 0.8; }
+        .reward-banner { background: rgba(212,168,75,0.1); border: 1px solid rgba(212,168,75,0.3); padding: 20px; margin: 16px 0; text-align: center; animation: rewardGlow 2s ease infinite; }
+        @keyframes rewardGlow { 0%, 100% { box-shadow: 0 0 8px rgba(212,168,75,0.1); } 50% { box-shadow: 0 0 20px rgba(212,168,75,0.25); } }
+        .reward-shelf-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: rgba(139,107,74,0.08); border: 1px solid rgba(139,107,74,0.15); margin-bottom: 8px; }
+        .deck-info { font-size: 12px; color: var(--cream-dim); opacity: 0.6; text-align: center; padding: 8px; border: 1px dashed rgba(139,107,74,0.2); margin-top: 8px; }
+        @media (max-width: 480px) { .screen-wrap { padding: 20px 16px; } .card-display { padding: 22px 18px; max-width: 240px; } .stat-grid { gap: 8px; } }
+      `}</style>
+
+      <div className="leaf-decoration" style={{ top: -20, right: -30, transform: 'rotate(25deg)' }}>🌿</div>
+      <div className="leaf-decoration" style={{ bottom: -20, left: -30, transform: 'rotate(-15deg)' }}>🍃</div>
+
+      <div className="fade-container">
+        {!loaded && (
+          <div className="screen-wrap" style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
+            <div style={{ fontSize: 36, opacity: 0.5 }}>🌙</div>
+            <p className="body-text" style={{ marginTop: 12, fontStyle: 'italic', opacity: 0.5 }}>The cards are stirring...</p>
+          </div>
+        )}
+
+        {loaded && screen === "title" && (
+          <div className="screen-wrap" style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 32 }}>
+            <div className="text-reveal">
+              <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.7 }}>🌙</div>
+              <h1 className="title-text" style={{ fontSize: 26, color: 'var(--cream)', marginBottom: 8 }}>The Witch's Apprentice</h1>
+              <p className="body-text" style={{ fontSize: 15, maxWidth: 340, margin: '0 auto', opacity: 0.7 }}>A tarot learning journey through story and intuition</p>
+            </div>
+            <div className="divider"><span>✦</span></div>
+            <div className="text-reveal" style={{ transitionDelay: '0.2s' }}>
+              <p className="body-text" style={{ marginBottom: 20, fontStyle: 'italic', fontSize: 16 }}>"Come in, child. The cards have been waiting for you."</p>
+              <p className="body-text" style={{ marginBottom: 28, fontSize: 15 }}>What shall I call you, little one?</p>
+              <input className="name-input" type="text" placeholder="Your name..." value={apprenticeName}
+                onChange={e => setApprenticeName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && startGame()} autoFocus />
+            </div>
+            <div className="text-reveal" style={{ transitionDelay: '0.4s' }}>
+              <button className="btn btn-primary" onClick={startGame} disabled={!apprenticeName.trim()} style={{ opacity: apprenticeName.trim() ? 1 : 0.4 }}>Begin Your Apprenticeship</button>
+            </div>
+          </div>
+        )}
+
+        {loaded && screen === "hub" && (
+          <div className="screen-wrap" style={{ gap: 16 }}>
+            <div className="text-reveal">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent-light)', marginBottom: 4 }}>{currentLevel.title}</p>
+                  <h2 className="heading" style={{ fontSize: 22 }}>{apprenticeName}</h2>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span className="heading" style={{ fontSize: 14, color: 'var(--gold)' }}>Level {currentLevel.level}</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, color: 'var(--cream-dim)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Experience</span>
+                  <span style={{ fontSize: 11, color: 'var(--cream-dim)' }}>{nextLevel ? `${xpInLevel}/${xpForLevel}` : 'MAX'}</span>
+                </div>
+                <div className="xp-bar-outer"><div className="xp-bar-inner" style={{ width: `${nextLevel ? (xpInLevel / xpForLevel) * 100 : 100}%` }}/></div>
+              </div>
+            </div>
+            <div className="deck-info">{deckInfo.suitNames.join(" · ")} — {deckInfo.count} possible readings {!deckInfo.allowReversed && " · Upright only"}</div>
+            <div className="text-reveal" style={{ transitionDelay: '0.15s' }}>
+              <p className="body-text" style={{ fontStyle: 'italic', marginBottom: 8, fontSize: 16 }}>
+                {stats.total === 0 ? `"Welcome, ${apprenticeName}. Your first lesson awaits. Someone in the village needs guidance — will you read the cards for them?"`
+                  : nextLevel && currentLevel.level < 4 ? `"We begin with the Major Arcana, ${apprenticeName}. Master the big voices before you listen for the whispers."`
+                  : stats.perfect > stats.good + stats.wrong ? `"Your gift grows stronger, ${apprenticeName}. The cards speak clearly through you now."`
+                  : `"Every reading teaches us something, ${apprenticeName}. There is always more to learn."`}
+              </p>
+            </div>
+            <div className="text-reveal" style={{ transitionDelay: '0.3s', display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+              <button className="btn btn-primary" onClick={generateEncounter}>🌙 Draw a Card</button>
+              {stats.total > 0 && <button className="btn" onClick={() => transition("journal")}>View Your Journal</button>}
+              {unlockedRewards.length > 0 && <button className="btn" onClick={() => transition("shelf")}>🌿 Your Shelf</button>}
+            </div>
+            {stats.total > 0 && (
+              <div className="text-reveal" style={{ transitionDelay: '0.4s', marginTop: 8 }}>
+                <div className="stat-grid">
+                  <div className="stat-box"><span className="stat-number">{stats.total}</span><div className="stat-label">Readings</div></div>
+                  <div className="stat-box"><span className="stat-number" style={{ color: 'var(--success)' }}>{stats.perfect}</span><div className="stat-label">Clear</div></div>
+                  <div className="stat-box"><span className="stat-number" style={{ color: 'var(--partial)' }}>{stats.good}</span><div className="stat-label">Partial</div></div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {loaded && screen === "encounter" && currentCard && currentScenario && (
+          <div className="screen-wrap" style={{ gap: 12 }}>
+            <div className="text-reveal">
+              <button className="btn" onClick={() => transition("hub")} style={{ padding: '6px 16px', fontSize: 11, marginBottom: 8, border: '1px solid rgba(139,107,74,0.3)' }}>← Return</button>
+              <p style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent-light)', marginBottom: 6 }}>{currentScenario.location}</p>
+              <p className="body-text" style={{ fontSize: 17 }}>You find <strong style={{ color: 'var(--cream)' }}>{currentScenario.npc}</strong> at {currentScenario.location}. They {currentScenario.situation}.</p>
+              <p className="body-text" style={{ fontSize: 15, marginTop: 8, fontStyle: 'italic', opacity: 0.7 }}>You shuffle your deck and draw a card to guide them...</p>
+            </div>
+            <div className={`card-display${cardRevealed ? ' revealed' : ''}`}>
+              <div style={{ fontSize: 42, marginBottom: 10, transform: isReversed ? 'rotate(180deg)' : 'none', display: 'inline-block' }}>{getCardSymbol(currentCard.name)}</div>
+              <h3 className="heading" style={{ fontSize: 20, color: '#2a3a2a', marginBottom: 4 }}>{currentCard.name}</h3>
+              {isReversed && <div className="reversed-badge">Reversed</div>}
+            </div>
+            {!result && (
+              <div className="text-reveal" style={{ transitionDelay: '0.3s' }}>
+                <p className="body-text" style={{ fontSize: 14, marginBottom: 10 }}>How do you interpret this card for {currentScenario.npc.split(',')[0]}? What guidance do the cards offer?</p>
+                <textarea className="textarea-input" placeholder="Share your reading... What does this card mean in their situation?"
+                  value={interpretation} onChange={e => setInterpretation(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitInterpretation(); } }} autoFocus />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                  <span style={{ fontSize: 12, color: 'var(--cream-dim)', opacity: 0.5 }}>{interpretation.length < 10 ? 'Write a bit more...' : 'Press Enter or click Submit'}</span>
+                  <button className="btn btn-primary" onClick={submitInterpretation} disabled={interpretation.trim().length < 10}
+                    style={{ padding: '10px 24px', fontSize: 12, opacity: interpretation.trim().length < 10 ? 0.4 : 1 }}>Submit Reading</button>
+                </div>
+              </div>
+            )}
+            {result && (
+              <div className="text-reveal" style={{ transitionDelay: '0.1s' }}>
+                <div className={`result-banner result-${result.score}`}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span className="heading" style={{ fontSize: 13, color: result.score === 'perfect' ? 'var(--success)' : result.score === 'good' ? 'var(--partial)' : 'var(--miss)' }}>
+                      {result.score === 'perfect' ? '★ Clear Reading' : result.score === 'good' ? '◐ Partial Reading' : '○ Misread'}</span>
+                    <span style={{ fontSize: 13, color: 'var(--gold)' }}>+{result.xpGain} XP</span>
+                  </div>
+                  <p className="body-text" style={{ fontSize: 16 }}>{result.response}</p>
+                </div>
+                {showMeaning && (
+                  <div className="meaning-reveal">
+                    <p style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-light)', marginBottom: 8 }}>{currentCard.name} — {isReversed ? 'Reversed' : 'Upright'} Meaning</p>
+                    <p className="body-text" style={{ fontSize: 16, color: 'var(--cream)' }}>{isReversed ? currentCard.reversed : currentCard.upright}</p>
+                  </div>
+                )}
+                {newReward && (
+                  <div className="reward-banner">
+                    <div style={{ fontSize: 36, marginBottom: 8 }}>{newReward.emoji}</div>
+                    <p className="heading" style={{ fontSize: 14, color: 'var(--gold)', marginBottom: 8 }}>Level Up! — {newReward.name}</p>
+                    <p className="body-text" style={{ fontSize: 15, fontStyle: 'italic' }}>{newReward.desc}</p>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+                  <button className="btn btn-primary" onClick={generateEncounter} style={{ flex: 1, minWidth: 160 }}>Next Reading</button>
+                  <button className="btn" onClick={() => transition("hub")} style={{ flex: 1, minWidth: 130 }}>Return Home</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {loaded && screen === "journal" && (
+          <div className="screen-wrap" style={{ gap: 16 }}>
+            <div className="text-reveal">
+              <button className="btn" onClick={() => transition("hub")} style={{ padding: '6px 16px', fontSize: 11, marginBottom: 12, border: '1px solid rgba(139,107,74,0.3)' }}>← Return</button>
+              <h2 className="heading" style={{ fontSize: 20, marginBottom: 4 }}>📖 Apprentice Journal</h2>
+              <p className="body-text" style={{ fontSize: 14, opacity: 0.6 }}>Your reading history</p>
+            </div>
+            <div className="divider"><span>✦</span></div>
+            <div className="text-reveal" style={{ transitionDelay: '0.15s' }}>
+              <div className="stat-grid">
+                <div className="stat-box"><span className="stat-number">{stats.total}</span><div className="stat-label">Total</div></div>
+                <div className="stat-box"><span className="stat-number" style={{ color: 'var(--success)' }}>{stats.perfect}</span><div className="stat-label">Clear</div></div>
+                <div className="stat-box"><span className="stat-number" style={{ color: 'var(--partial)' }}>{stats.good}</span><div className="stat-label">Partial</div></div>
+              </div>
+              {stats.total > 0 && <div style={{ textAlign: 'center', marginTop: 8 }}><span style={{ fontSize: 13, color: 'var(--cream-dim)' }}>Accuracy: {Math.round((stats.perfect / stats.total) * 100)}% clear readings</span></div>}
+            </div>
+            <div className="divider"><span>✦</span></div>
+            <div className="text-reveal" style={{ transitionDelay: '0.3s' }}>
+              {encounterHistory.length === 0 ? (
+                <p className="body-text" style={{ textAlign: 'center', fontStyle: 'italic', opacity: 0.5 }}>No readings yet. The pages await your story.</p>
+              ) : (
+                <div>{[...encounterHistory].reverse().map((entry, i) => (
+                  <div key={i} className="history-item">
+                    <div className="history-dot" style={{ background: entry.score === 'perfect' ? 'var(--success)' : entry.score === 'good' ? 'var(--partial)' : 'var(--miss)' }}/>
+                    <span style={{ flex: 1, color: 'var(--cream-dim)' }}>{getCardSymbol(entry.card)} {entry.card}{entry.reversed ? ' ↺' : ''}</span>
+                    <span style={{ fontSize: 12, color: 'var(--cream-dim)', opacity: 0.5 }}>{entry.npc.split(',')[0]}</span>
+                  </div>
+                ))}</div>
+              )}
+            </div>
+            {stats.total > 0 && (
+              <div className="text-reveal" style={{ transitionDelay: '0.45s', marginTop: 16, textAlign: 'center' }}>
+                <button className="btn" onClick={async () => {
+                  if (confirm("Start a new apprenticeship? This will erase all your progress.")) {
+                    setStats({ perfect: 0, good: 0, wrong: 0, total: 0 }); setTotalXP(0);
+                    setEncounterHistory([]); setUnlockedRewards([]); setApprenticeName("");
+                    try { await storage.set(SAVE_KEY, JSON.stringify({})); } catch(e) {}
+                    transition("title");
+                  }
+                }} style={{ padding: '8px 20px', fontSize: 11, opacity: 0.5, border: '1px solid rgba(139,107,74,0.2)' }}>Start New Apprenticeship</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {loaded && screen === "shelf" && (
+          <div className="screen-wrap" style={{ gap: 16 }}>
+            <div className="text-reveal">
+              <button className="btn" onClick={() => transition("hub")} style={{ padding: '6px 16px', fontSize: 11, marginBottom: 12, border: '1px solid rgba(139,107,74,0.3)' }}>← Return</button>
+              <h2 className="heading" style={{ fontSize: 20, marginBottom: 4 }}>🌿 Your Shelf</h2>
+              <p className="body-text" style={{ fontSize: 14, opacity: 0.6 }}>Gifts from your mentor, earned through your readings</p>
+            </div>
+            <div className="divider"><span>✦</span></div>
+            <div className="text-reveal" style={{ transitionDelay: '0.15s' }}>
+              {unlockedRewards.map((r, i) => (
+                <div key={i} className="reward-shelf-item">
+                  <span style={{ fontSize: 28, flexShrink: 0 }}>{r.emoji}</span>
+                  <div>
+                    <p className="heading" style={{ fontSize: 13, color: 'var(--cream)', marginBottom: 4 }}>{r.name}</p>
+                    <p className="body-text" style={{ fontSize: 14, lineHeight: 1.5 }}>{r.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="divider"><span>✦</span></div>
+            <div className="text-reveal" style={{ transitionDelay: '0.3s' }}>
+              <p className="body-text" style={{ fontSize: 13, textAlign: 'center', opacity: 0.4, fontStyle: 'italic' }}>
+                {LEVEL_CONFIG.filter(l => l.unlock).length - unlockedRewards.length} more gifts await as you grow...
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
