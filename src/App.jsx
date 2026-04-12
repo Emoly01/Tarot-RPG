@@ -213,7 +213,133 @@ const MENTOR_RESPONSES = {
     "\"Ah, little one,\" your mentor says softly. \"The cards speak in whispers, not shouts. You were listening for the wrong voice. Let me guide you...\"",
     "Your mentor stirs the fire. \"A misread isn't a failure — it's a lesson wearing a mask. Let me show you what the card truly meant here...\"",
   ],
+  stuffing: [
+    "Your mentor's eyes narrow. \"You're reciting meanings, child, not reading. A real reading speaks TO someone, not AT a textbook.\"",
+    "\"Hmm,\" your mentor says dryly. \"I see you know the words. But words without heart are just noise. Tell me what this card means for THEM.\"",
+    "Your mentor taps the card. \"You've listed what it means. Now tell me what it means HERE, for THIS person, in THIS moment. That's reading.\"",
+  ],
 };
+
+// Expanded synonyms that show understanding even without exact keywords
+const CONCEPT_MAP = {
+  new_beginnings: ["begin", "start", "fresh", "dawn", "birth", "embark", "leap", "chapter", "venture", "open", "door", "first", "step", "unknown", "ahead"],
+  endings: ["end", "close", "finish", "goodbye", "leave", "behind", "over", "complete", "done", "final", "last", "death", "die", "gone"],
+  love_connection: ["love", "heart", "romance", "partner", "relationship", "connection", "bond", "together", "unite", "soul", "care", "cherish", "tenderness", "intimacy", "attraction", "drawn"],
+  conflict: ["conflict", "fight", "struggle", "tension", "clash", "disagree", "oppose", "battle", "war", "rival", "compete", "friction", "hostile"],
+  change_transform: ["change", "transform", "transition", "shift", "evolve", "grow", "become", "different", "turn", "metamorphosis", "adapt", "move", "progress", "develop"],
+  fear_anxiety: ["fear", "anxiety", "worry", "doubt", "afraid", "scared", "uncertain", "dread", "panic", "nervous", "uneasy", "terrified", "hesitate", "apprehensive"],
+  strength_courage: ["strength", "courage", "brave", "power", "resilience", "endure", "persist", "overcome", "stand", "firm", "bold", "confident", "resolve", "determination"],
+  balance_harmony: ["balance", "harmony", "peace", "equilibrium", "moderate", "patience", "steady", "calm", "center", "stable", "fair", "equal", "middle", "ground"],
+  loss_grief: ["loss", "grief", "pain", "sorrow", "mourn", "miss", "regret", "suffer", "wound", "hurt", "broken", "devastate", "empty"],
+  wisdom_truth: ["wisdom", "knowledge", "learn", "understand", "insight", "clarity", "truth", "realize", "discover", "aware", "enlighten", "see", "know", "perceive"],
+  control_authority: ["control", "power", "authority", "discipline", "structure", "order", "command", "rule", "master", "direct", "lead", "govern", "boundaries"],
+  creativity_inspiration: ["creative", "inspiration", "imagination", "art", "vision", "dream", "idea", "spark", "muse", "express", "passion", "fire", "create", "invent"],
+  deception: ["deceit", "deception", "lie", "trick", "betray", "dishonest", "false", "manipulate", "scheme", "hide", "conceal", "mask", "pretend", "illusion"],
+  freedom: ["freedom", "free", "liberate", "release", "escape", "break", "chains", "open", "unbound", "independent", "autonomy", "choice"],
+  healing: ["heal", "recover", "mend", "restore", "repair", "renew", "better", "improve", "forgive", "soothe", "nurture", "comfort", "tend"],
+  abundance: ["abundance", "wealth", "prosper", "rich", "plenty", "reward", "fortune", "generous", "gift", "bless", "flourish", "thrive", "harvest"],
+  isolation: ["alone", "isolate", "solitude", "lonely", "withdraw", "hermit", "retreat", "separate", "distant", "apart", "seclude", "inward"],
+  commitment: ["commit", "dedicate", "loyal", "faithful", "promise", "vow", "devote", "stick", "choose", "decide", "pledge", "stay"],
+  blocked: ["block", "stuck", "stagnant", "trap", "restrict", "imprison", "limit", "obstacle", "barrier", "prevent", "stop", "wall", "unable", "frozen"],
+  letting_go: ["let go", "release", "surrender", "accept", "move on", "detach", "relinquish", "give up", "forgive", "drop", "shed"],
+};
+
+function scoreInterpretation(input, card, isReversed, scenario) {
+  const text = input.toLowerCase();
+  const words = text.split(/\s+/);
+  const wordCount = words.length;
+  const correctMeaning = isReversed ? card.reversed : card.upright;
+  const wrongMeaning = isReversed ? card.upright : card.reversed;
+  const correctKeywords = correctMeaning.toLowerCase().split(/[,\s]+/).filter(w => w.length > 3);
+  const wrongKeywords = wrongMeaning.toLowerCase().split(/[,\s]+/).filter(w => w.length > 3);
+
+  // --- PENALTY: Too short ---
+  if (wordCount < 8) return { score: "wrong", reason: "too_short" };
+
+  // --- PENALTY: Keyword stuffing detection ---
+  // If the response is mostly just tarot keywords with no connective tissue
+  const allTarotKeywords = [...correctKeywords, ...wrongKeywords];
+  const tarotWordCount = words.filter(w => allTarotKeywords.includes(w)).length;
+  const stuffingRatio = tarotWordCount / wordCount;
+
+  // Count sentence-like structure (periods, commas, conjunctions)
+  const hasStructure = (text.includes('.') || text.includes(',') || text.includes(' and ') ||
+    text.includes(' but ') || text.includes(' because ') || text.includes(' should ') ||
+    text.includes(' might ') || text.includes(' could ') || text.includes(' perhaps ') ||
+    text.includes(' maybe ') || text.includes(' think ') || text.includes(' feel ') ||
+    text.includes(' suggest ') || text.includes(' need ') || text.includes(' tell '));
+
+  if (stuffingRatio > 0.5 && !hasStructure) {
+    return { score: "wrong", reason: "stuffing" };
+  }
+
+  // --- SCORING: Concept matching (broader than keywords) ---
+  let conceptScore = 0;
+  const meaningLower = correctMeaning.toLowerCase();
+
+  Object.entries(CONCEPT_MAP).forEach(([concept, synonyms]) => {
+    const meaningMatchesThisConcept = synonyms.some(s => meaningLower.includes(s));
+    if (meaningMatchesThisConcept) {
+      const inputMatchesThisConcept = synonyms.some(s => text.includes(s));
+      if (inputMatchesThisConcept) conceptScore += 1;
+    }
+  });
+
+  // --- SCORING: Direct keyword hits (but weighted less than before) ---
+  let directHits = 0;
+  const usedKeywords = new Set();
+  correctKeywords.forEach(kw => {
+    if (text.includes(kw) && !usedKeywords.has(kw)) {
+      directHits += 0.5;
+      usedKeywords.add(kw);
+    }
+  });
+
+  // --- SCORING: Wrong keyword hits (penalty) ---
+  let wrongHits = 0;
+  wrongKeywords.forEach(kw => {
+    if (text.includes(kw) && !correctKeywords.includes(kw)) wrongHits++;
+  });
+
+  // --- BONUS: Referencing the NPC's situation ---
+  let contextBonus = 0;
+  if (scenario) {
+    const npcFirstName = scenario.npc.split(',')[0].split(' ').pop().toLowerCase();
+    const situationWords = scenario.situation.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+
+    // Mentioning the NPC by name
+    if (text.includes(npcFirstName)) contextBonus += 0.5;
+
+    // Referencing their specific situation
+    const situationHits = situationWords.filter(w => text.includes(w)).length;
+    if (situationHits >= 2) contextBonus += 1;
+    else if (situationHits >= 1) contextBonus += 0.5;
+
+    // Using advice-giving language (speaking TO the person)
+    const adviceWords = ["you", "your", "them", "they", "their", "should", "could", "might", "perhaps", "consider", "suggest", "advice", "guidance", "tell", "encourage", "remind", "warn"];
+    const adviceHits = adviceWords.filter(w => text.includes(w)).length;
+    if (adviceHits >= 2) contextBonus += 0.5;
+  }
+
+  // --- BONUS: Reversed awareness ---
+  let reversalBonus = 0;
+  if (isReversed) {
+    const reversalLanguage = ["reverse", "block", "imbalance", "lack", "too much", "avoid", "resist",
+      "struggle", "shadow", "opposite", "excess", "deny", "unable", "stuck", "lost", "warning",
+      "careful", "caution", "danger", "neglect", "ignore", "suppress", "twisted", "inverted",
+      "dark side", "overdo", "under", "misuse", "distort"];
+    if (reversalLanguage.some(w => text.includes(w))) reversalBonus += 0.5;
+  }
+
+  // --- FINAL SCORE ---
+  const totalScore = conceptScore + directHits + contextBonus + reversalBonus - (wrongHits * 0.5);
+
+  if (totalScore >= 3 && contextBonus >= 0.5) return { score: "perfect", reason: "full" };
+  if (totalScore >= 2.5) return { score: "perfect", reason: "full" };
+  if (totalScore >= 1.5 || (conceptScore >= 1 && contextBonus >= 0.5)) return { score: "good", reason: "partial" };
+  if (totalScore >= 0.5) return { score: "good", reason: "partial" };
+  return { score: "wrong", reason: "miss" };
+}
 
 const CARD_SYMBOLS = {
   "The Fool": "🌿", "The Magician": "✨", "The High Priestess": "🌙", "The Empress": "🌸",
@@ -232,42 +358,6 @@ const getCardSymbol = (name) => {
   if (name.includes("Pentacles")) return "🪙";
   return "🃏";
 };
-
-function scoreInterpretation(input, card, isReversed) {
-  const text = input.toLowerCase();
-  const correctMeaning = isReversed ? card.reversed : card.upright;
-  const wrongMeaning = isReversed ? card.upright : card.reversed;
-  const correctWords = correctMeaning.toLowerCase().split(/[,\s]+/).filter(w => w.length > 3);
-  const wrongWords = wrongMeaning.toLowerCase().split(/[,\s]+/).filter(w => w.length > 3);
-  let correctHits = 0;
-  let wrongHits = 0;
-  correctWords.forEach(kw => { if (text.includes(kw)) correctHits++; });
-  wrongWords.forEach(kw => { if (text.includes(kw)) wrongHits++; });
-  const themeWords = {
-    love: ["love", "heart", "romance", "partner", "relationship", "connection", "affection"],
-    change: ["change", "transform", "transition", "shift", "move", "journey", "growth"],
-    fear: ["fear", "anxiety", "worry", "doubt", "afraid", "scared", "uncertain"],
-    strength: ["strength", "courage", "brave", "power", "resilience", "endure", "persist"],
-    balance: ["balance", "harmony", "peace", "equilibrium", "moderate", "patience"],
-    loss: ["loss", "grief", "pain", "sorrow", "letting", "release", "end"],
-    new_start: ["begin", "start", "fresh", "opportunity", "spark", "dawn", "birth"],
-    wisdom: ["wisdom", "knowledge", "learn", "understand", "insight", "clarity", "truth"],
-    control: ["control", "power", "authority", "discipline", "structure", "order"],
-    creativity: ["creative", "inspiration", "imagination", "art", "vision", "dream"],
-  };
-  const meaningLower = correctMeaning.toLowerCase();
-  Object.values(themeWords).forEach(words => {
-    if (words.some(w => meaningLower.includes(w)) && words.some(w => text.includes(w))) correctHits += 0.5;
-  });
-  if (isReversed) {
-    const reversalWords = ["reverse", "block", "imbalance", "lack", "too much", "avoid", "resist", "struggle", "negative", "shadow", "opposite", "excess", "deny", "unable", "stuck", "lost"];
-    if (reversalWords.some(w => text.includes(w))) correctHits += 1;
-  }
-  if (text.length < 15) return "wrong";
-  if (correctHits >= 3) return "perfect";
-  if (correctHits >= 1.5 || (correctHits >= 1 && wrongHits === 0)) return "good";
-  return "wrong";
-}
 
 export default function App() {
   const [screen, setScreen] = useState("title");
@@ -348,13 +438,25 @@ export default function App() {
 
   const submitInterpretation = useCallback(() => {
     if (interpretation.trim().length < 10) return;
-    const score = scoreInterpretation(interpretation, currentCard, isReversed);
-    const responses = MENTOR_RESPONSES[score];
-    const response = responses[Math.floor(Math.random() * responses.length)];
-    const xpGain = score === "perfect" ? 30 : score === "good" ? 15 : 5;
+    const result = scoreInterpretation(interpretation, currentCard, isReversed, currentScenario);
+    const score = result.score;
+    const reason = result.reason;
+    
+    // Pick response based on score and reason
+    let responsePool;
+    if (reason === "stuffing") {
+      responsePool = MENTOR_RESPONSES.stuffing;
+    } else {
+      responsePool = MENTOR_RESPONSES[score];
+    }
+    const response = responsePool[Math.floor(Math.random() * responsePool.length)];
+    
+    // Stuffing gets wrong-level XP
+    const xpGain = reason === "stuffing" ? 5 : score === "perfect" ? 30 : score === "good" ? 15 : 5;
+    const effectiveScore = reason === "stuffing" ? "wrong" : score;
     const newXP = totalXP + xpGain;
-    const newStats = { ...stats, [score]: stats[score] + 1, total: stats.total + 1 };
-    const newHistory = [...encounterHistory, { card: currentCard.name, reversed: isReversed, score, npc: currentScenario.npc }];
+    const newStats = { ...stats, [effectiveScore]: stats[effectiveScore] + 1, total: stats.total + 1 };
+    const newHistory = [...encounterHistory, { card: currentCard.name, reversed: isReversed, score: effectiveScore, npc: currentScenario.npc }];
     const oldLevel = getLevel(totalXP);
     const newLevelObj = getLevel(newXP);
     let reward = null;
@@ -363,7 +465,7 @@ export default function App() {
       reward = newLevelObj.unlock;
       if (!newRewards.find(r => r.name === reward.name)) newRewards.push(reward);
     }
-    setResult({ score, response, xpGain });
+    setResult({ score: effectiveScore, response, xpGain });
     setTotalXP(newXP);
     setStats(newStats);
     setEncounterHistory(newHistory);
