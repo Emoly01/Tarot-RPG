@@ -307,46 +307,16 @@ function generateQuestion(card, pool, mode) {
 
   if (mode === "spread") {
     const spreadCards = shuffle(pool).slice(0, 3);
-    const orientations = spreadCards.map(() => Math.random() > 0.5 ? "Upright" : "Reversed");
     const positions = ["Past", "Present", "Future"];
-
-    const getMeanings = (card, ori) => ori === "Upright" ? card.upright : card.reversed;
-
-    // Build the correct narrative from all three cards
-    const pastM = getMeanings(spreadCards[0], orientations[0]);
-    const presentM = getMeanings(spreadCards[1], orientations[1]);
-    const futureM = getMeanings(spreadCards[2], orientations[2]);
-
-    const narrativeTemplates = [
-      `The past held ${pastM[0].toLowerCase()} and ${pastM[1].toLowerCase()}, which shaped the current experience of ${presentM[0].toLowerCase()}. Looking ahead, the path leads toward ${futureM[0].toLowerCase()} and ${futureM[1].toLowerCase()}.`,
-      `A foundation of ${pastM[0].toLowerCase()} (${spreadCards[0].name}) gives way to ${presentM[0].toLowerCase()} and ${presentM[1].toLowerCase()} in the present. The future calls for ${futureM[0].toLowerCase()}.`,
-      `Coming from a place of ${pastM[0].toLowerCase()}, the querent now faces ${presentM[0].toLowerCase()} and ${presentM[1].toLowerCase()}. The reading points toward ${futureM[0].toLowerCase()} and ${futureM[1].toLowerCase()} ahead.`,
-    ];
-    const correctNarrative = narrativeTemplates[Math.floor(Math.random() * narrativeTemplates.length)];
-
-    // Generate wrong narratives by mixing in meanings from other cards
-    const wrongCards = shuffle(pool.filter(c => !spreadCards.find(sc => sc.id === c.id))).slice(0, 6);
-    const wrongNarratives = [
-      `The past was defined by ${getMeanings(wrongCards[0], "Upright")[0].toLowerCase()} and ${getMeanings(wrongCards[1], "Upright")[1].toLowerCase()}, leading to present ${presentM[0].toLowerCase()}. The future suggests ${getMeanings(wrongCards[2], "Upright")[0].toLowerCase()}.`,
-      `Starting from ${pastM[0].toLowerCase()}, the present shows ${getMeanings(wrongCards[3], "Reversed")[0].toLowerCase()} and ${getMeanings(wrongCards[4], "Reversed")[1].toLowerCase()}. Ahead lies ${getMeanings(wrongCards[5], "Upright")[0].toLowerCase()}.`,
-      `A journey from ${getMeanings(wrongCards[0], "Reversed")[0].toLowerCase()} through ${getMeanings(wrongCards[1], "Upright")[0].toLowerCase()} toward ${futureM[0].toLowerCase()} and ${getMeanings(wrongCards[2], "Reversed")[0].toLowerCase()}.`,
-    ];
-
+    const scenario = spreadCards.map((c, i) => `${positions[i]}: ${c.name} (${Math.random() > 0.5 ? "Upright" : "Reversed"})`).join(" · ");
+    const focusCard = spreadCards[Math.floor(Math.random() * 3)];
+    const focusPos = positions[spreadCards.indexOf(focusCard)];
+    const distr = pickDistractors(focusCard, pool, 3);
     const options = shuffle([
-      { id: "correct", text: correctNarrative, correct: true },
-      ...wrongNarratives.slice(0, 3).map((n, i) => ({ id: `wrong-${i}`, text: n, correct: false })),
+      { id: focusCard.id, text: focusCard.upright.slice(0, 2).join(", "), correct: true },
+      ...distr.map(d => ({ id: d.id, text: d.upright.slice(0, 2).join(", "), correct: false })),
     ]);
-
-    // Use the middle card (Present) for SRS tracking
-    return {
-      type: "spread",
-      prompt: `${positions[0]}: ${spreadCards[0].name} (${orientations[0]})  ·  ${positions[1]}: ${spreadCards[1].name} (${orientations[1]})  ·  ${positions[2]}: ${spreadCards[2].name} (${orientations[2]})`,
-      subtitle: "Which narrative best captures this spread's story?",
-      card: spreadCards[1],
-      spreadCards,
-      orientations,
-      options,
-    };
+    return { type: "spread", prompt: scenario, subtitle: `In the "${focusPos}" position, what does ${focusCard.name} suggest?`, card: focusCard, options };
   }
 
   if (mode === "free-type") {
@@ -731,7 +701,7 @@ export default function App() {
                   { mode: "meaning-to-card", icon: "🔮", title: "Meaning → Card", desc: "Read the meaning, name the card" },
                   { mode: "upright-reversed", icon: "⚖", title: "Upright vs Reversed", desc: "Know the difference" },
                   { mode: "free-type", icon: "✍", title: "Free Recall", desc: "Type meanings from memory — no hints" },
-                  { mode: "spread", icon: "✧", title: "Read the Spread", desc: "Pick the narrative that fits a 3-card spread" },
+                  { mode: "spread", icon: "✧", title: "Read the Spread", desc: "Interpret a mini 3-card spread" },
                   { mode: "mixed", icon: "🌙", title: "Mixed Practice", desc: "All modes, spaced repetition" },
                 ].map(m => (
                   <div key={m.mode} className="mode-card" onClick={() => startQuiz(m.mode)}>
@@ -764,56 +734,22 @@ export default function App() {
             </div>
 
             {/* Question Card */}
-            <div style={{ padding: currentQ.type === "spread" ? 20 : 28, background: "linear-gradient(160deg, rgba(201,168,76,0.06), rgba(201,168,76,0.02))", border: "1px solid rgba(201,168,76,0.15)", borderRadius: 20, marginBottom: 24, textAlign: "center", animation: "cardReveal 0.5s ease-out" }}>
+            <div style={{ padding: 28, background: "linear-gradient(160deg, rgba(201,168,76,0.06), rgba(201,168,76,0.02))", border: "1px solid rgba(201,168,76,0.15)", borderRadius: 20, marginBottom: 24, textAlign: "center", animation: "cardReveal 0.5s ease-out" }}>
               <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: 10, color: "rgba(201,168,76,0.4)", letterSpacing: 2, marginBottom: 12, textTransform: "uppercase" }}>
                 {currentQ.type === "card-to-meaning" && "What does this card mean?"}
                 {currentQ.type === "meaning-to-card" && "Which card matches?"}
                 {currentQ.type === "upright-reversed" && "Choose the correct meaning"}
-                {currentQ.type === "spread" && "What story do these cards tell?"}
+                {currentQ.type === "spread" && "Read the spread"}
                 {currentQ.type === "free-type" && "Free recall"}
               </div>
-
-              {/* Spread: show 3 cards visually */}
-              {currentQ.type === "spread" && currentQ.spreadCards && (
-                <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 14 }}>
-                  {currentQ.spreadCards.map((sc, i) => (
-                    <div key={i} style={{
-                      flex: "1 1 0", maxWidth: 140, padding: "12px 8px",
-                      background: "rgba(201,168,76,0.04)", border: "1px solid rgba(201,168,76,0.12)",
-                      borderRadius: 12, textAlign: "center",
-                    }}>
-                      <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: 9, color: "rgba(201,168,76,0.4)", letterSpacing: 1, marginBottom: 6 }}>
-                        {["PAST", "PRESENT", "FUTURE"][i]}
-                      </div>
-                      {sc.id < 22 && (
-                        <div style={{ fontSize: 22, marginBottom: 4, color: "#c9a84c", opacity: 0.7 }}>
-                          {CARD_SYMBOLS[sc.id] || "✦"}
-                        </div>
-                      )}
-                      <div style={{ fontFamily: "'Cinzel', serif", fontSize: 11, fontWeight: 600, color: "#e8dcc8", marginBottom: 4, lineHeight: 1.3 }}>
-                        {sc.name}
-                      </div>
-                      <div style={{
-                        fontFamily: "'Raleway', sans-serif", fontSize: 10, fontWeight: 400,
-                        color: currentQ.orientations[i] === "Upright" ? "rgba(76,175,80,0.6)" : "rgba(220,53,69,0.6)",
-                      }}>
-                        {currentQ.orientations[i] === "Reversed" ? "↓ " : "↑ "}{currentQ.orientations[i]}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {currentQ.type !== "spread" && currentQ.card.id < 22 && currentQ.type !== "meaning-to-card" && (
+              {currentQ.card.id < 22 && currentQ.type !== "meaning-to-card" && currentQ.type !== "spread" && (
                 <div style={{ fontSize: 40, marginBottom: 8, filter: "drop-shadow(0 0 8px rgba(201,168,76,0.3))", color: "#c9a84c" }}>
                   {CARD_SYMBOLS[currentQ.card.id] || "✦"}
                 </div>
               )}
-              {currentQ.type !== "spread" && (
-                <div style={{ fontFamily: "'Cinzel', serif", fontSize: 22, fontWeight: 600, color: "#e8dcc8", marginBottom: 8, lineHeight: 1.5 }}>
-                  {currentQ.prompt}
-                </div>
-              )}
+              <div style={{ fontFamily: "'Cinzel', serif", fontSize: currentQ.type === "spread" ? 14 : 22, fontWeight: 600, color: "#e8dcc8", marginBottom: 8, lineHeight: 1.5 }}>
+                {currentQ.prompt}
+              </div>
               {currentQ.subtitle && (
                 <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: 13, color: "rgba(201,168,76,0.5)", fontStyle: "italic", fontWeight: 300 }}>
                   {currentQ.subtitle}
